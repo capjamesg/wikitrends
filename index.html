@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wiki Trends</title>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Commissioner:wght@100..900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #007bff;
+        }
+        html {
+            border-top: 10px solid var(--primary-color);
+            box-sizing: border-box;
+            font-family: 'Commissioner', sans-serif;
+        }
+        main {
+            max-width: 35em;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+        }
+        button {
+            padding: 5px;
+        }
+        input, button {
+            font-size: 1em;
+        }
+        #graph {
+            display: block;
+            margin: 1em;
+        }
+        .search_box {
+            display: flex;
+            justify-content: center;
+        }
+        .search_box input {
+            flex: 1;
+            padding: 10px;
+        }
+        button {
+            margin-left: 5px;
+            color: white;
+            background-color: var(--primary-color);
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+        }
+        a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        footer {
+            bottom: 0;
+            position: fixed;
+            text-align: center;
+            width: 100%;
+            left: 0;
+        }
+        .button-tray {
+            display: none;
+            justify-content: center;
+        }
+        button:focus, a:focus {
+            background-color: yellow;
+            color: black;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Wiki Trends</h1>
+        <div class="search_box">
+            <input type="text" id="search" placeholder="Search for a page">
+            <button id="search_button">Search</button>
+        </div>
+
+        <p id="intro-note">Search for a Wikipedia page to view traffic trends for the page.</p>
+
+        <div id="graph" style="max-width:100%;height:400px;"></div>
+        <div class="button-tray">
+            <button id="ytd">Last Year</button>
+            <button id="past_five_years">Past Five Years</button>
+        </div>
+        <footer>
+            <p>Made with 💜 by <a href="https://jamesg.blog">capjamesg</a>. Powered by <a href="https://wikimedia.org/api/rest_v1/">Wikimedia REST API</a>.</p>
+        </footer>
+    </main>
+    <script>
+        // options YTD, all time.
+        var current_date = new Date();
+        var five_years_ago = new Date(current_date.getFullYear() - 5, current_date.getMonth(), current_date.getDate());
+        var start_of_year = new Date(five_years_ago.getFullYear(), 0, 1);
+
+        var graph = document.getElementById('graph');
+        // 2015100200
+        var start_of_year_as_str = start_of_year.toISOString().split('T')[0];
+        var current_date_as_str = current_date.toISOString().split('T')[0];
+        // remove all -
+        var final_start_of_year_as_str = start_of_year_as_str.replace(/-/g, '');
+        var final_current_date_as_str = current_date_as_str.replace(/-/g, '');
+
+        var cached_results = {};
+
+        document.getElementById('search_button').addEventListener('click', function() {
+            var search = document.getElementById('search').value;
+            search = search.replace(/\b\w/g, l => l.toUpperCase());
+            document.getElementById('search').value = search;
+            // change search to title case
+            fetch(`https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/all-agents/${search}/daily/${final_start_of_year_as_str}/${final_current_date_as_str}`).then(response => response.json()).then(data => {
+                var x = [];
+                var y = [];
+                data.items.forEach(item => {
+                    var timestamp = item.timestamp;
+                    // remove last two digits
+                    timestamp = timestamp.substring(0, timestamp.length - 2);
+                    // change to YYYY-MM-DD
+                    timestamp = timestamp.substring(0, 4) + '-' + timestamp.substring(4, 6) + '-' + timestamp.substring(6, 8);
+                    x.push(timestamp);
+                    y.push(item.views);
+                });
+                cached_results[search] = {x: x, y: y};
+                var ytd = [];
+                var ytd_y = [];
+
+                for (var i = 0; i < x.length; i++) {
+                    if (new Date(x[i]) >= new Date().setFullYear(new Date().getFullYear() - 1)) {
+                        ytd.push(x[i]);
+                        ytd_y.push(y[i]);
+                    }
+                }
+                Plotly.newPlot( graph, [{
+                    x: ytd,
+                    y: ytd_y }], {
+                    title: `Searches for ${document.getElementById('search').value} on Wikipedia`});
+            });
+            document.getElementById("intro-note").style.display = 'none';
+            document.querySelector('.button-tray').style.display = 'flex';
+        });
+
+        document.getElementById('ytd').addEventListener('click', function() {
+            var search = document.getElementById('search').value;
+            var x = cached_results[search].x;
+            var y = cached_results[search].y;
+            // form is 2019-01-03 in x and value in y
+            var ytd = [];
+            var ytd_y = [];
+
+            for (var i = 0; i < x.length; i++) {
+                if (new Date(x[i]) >= new Date().setFullYear(new Date().getFullYear() - 1)) {
+                    ytd.push(x[i]);
+                    ytd_y.push(y[i]);
+                }
+            }
+            
+            Plotly.newPlot( graph, [{
+                x: ytd,
+                y: ytd_y }], {
+                title: `Searches for ${document.getElementById('search').value} on Wikipedia.`});
+        });
+
+        document.getElementById('past_five_years').addEventListener('click', function() {
+            var search = document.getElementById('search').value;
+            var x = cached_results[search].x;
+            var y = cached_results[search].y;
+            Plotly.newPlot( graph, [{
+                x: x,
+                y: y }], {
+                title: `Searches for ${document.getElementById('search').value} on Wikipedia.`});
+        });
+    </script>
+</body>
+</html>
